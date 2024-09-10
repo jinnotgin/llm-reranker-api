@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -17,66 +19,82 @@ type App struct {
 	Location  string
 }
 
+// ErrorResponse represents the structure of our error response
+type ErrorResponse struct {
+	Error string `json:"error"`
+}
+
 // LoggingMiddleware wraps an http.HandlerFunc and logs error requests with details
 func LoggingMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
-		// Create a custom ResponseWriter to capture the status code
-		rw := &responseWriter{w, http.StatusOK}
+		// Read and store the request body
+		bodyBytes, _ := io.ReadAll(r.Body)
+		r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+		// Create a custom ResponseWriter to capture the status code and response
+		rw := &responseWriter{
+			ResponseWriter: w,
+			status:         http.StatusOK,
+			body:           &bytes.Buffer{},
+		}
+
 		next.ServeHTTP(rw, r)
+
+		duration := time.Since(start)
 
 		// Only log if there's an error (status code >= 400)
 		if rw.status >= 400 {
-			duration := time.Since(start)
-
 			// Parse GET parameters
 			if err := r.ParseForm(); err != nil {
 				log.Printf("Error parsing form: %v", err)
 			}
 
-			// Create a map to store parameters
-			params := make(map[string]interface{})
+			// Create a map to store request details
+			requestDetails := make(map[string]interface{})
+			requestDetails["method"] = r.Method
+			requestDetails["path"] = r.URL.Path
+			requestDetails["status"] = rw.status
+			requestDetails["duration"] = duration.String()
+			requestDetails["query_params"] = r.URL.Query()
 
-			// Add GET parameters
-			for k, v := range r.Form {
-				params[k] = v
-			}
-
-			// Add POST parameters for non-GET requests
+			// Add request body for non-GET requests
 			if r.Method != http.MethodGet {
-				var postParams map[string]interface{}
-				if err := json.NewDecoder(r.Body).Decode(&postParams); err == nil {
-					for k, v := range postParams {
-						params[k] = v
-					}
-				}
+				requestDetails["body"] = string(bodyBytes)
 			}
 
-			// Convert params to JSON for logging
-			paramsJSON, _ := json.Marshal(params)
+			// Try to parse the error response
+			var errorResp ErrorResponse
+			if err := json.Unmarshal(rw.body.Bytes(), &errorResp); err == nil {
+				requestDetails["error_details"] = errorResp.Error
+			} else {
+				requestDetails["response"] = rw.body.String()
+			}
 
-			log.Printf(
-				"ERROR: method=%s path=%s status=%d duration=%s params=%s",
-				r.Method,
-				r.URL.Path,
-				rw.status,
-				duration,
-				string(paramsJSON),
-			)
+			// Convert requestDetails to JSON for logging
+			detailsJSON, _ := json.Marshal(requestDetails)
+
+			log.Printf("ERROR: %s", string(detailsJSON))
 		}
 	}
 }
 
-// Custom ResponseWriter to capture status code
+// Custom ResponseWriter to capture status code and response body
 type responseWriter struct {
 	http.ResponseWriter
 	status int
+	body   *bytes.Buffer
 }
 
 func (rw *responseWriter) WriteHeader(code int) {
 	rw.status = code
 	rw.ResponseWriter.WriteHeader(code)
+}
+
+func (rw *responseWriter) Write(b []byte) (int, error) {
+	rw.body.Write(b)
+	return rw.ResponseWriter.Write(b)
 }
 
 func main() {
