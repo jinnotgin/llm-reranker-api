@@ -11,19 +11,19 @@ import (
 )
 
 // New reranking-related structs
+type RankRequest struct {
+	Model           string   `json:"model"`
+	Query           string   `json:"query"`
+	Documents       []string `json:"documents"`
+	TopN            *int     `json:"top_n,omitempty"`
+	RankFields      []string `json:"rank_fields,omitempty"`
+	ReturnDocuments *bool    `json:"return_documents,omitempty"`
+	MaxChunksPerDoc *int     `json:"max_chunks_per_doc,omitempty"`
+}
+
 type Document struct {
 	Text string                 `json:"text"`
 	Meta map[string]interface{} `json:"meta,omitempty"`
-}
-
-type RankRequest struct {
-	Model           string     `json:"model"`
-	Query           string     `json:"query"`
-	Documents       []Document `json:"documents"`
-	TopN            *int       `json:"top_n,omitempty"`
-	RankFields      []string   `json:"rank_fields,omitempty"`
-	ReturnDocuments *bool      `json:"return_documents,omitempty"`
-	MaxChunksPerDoc *int       `json:"max_chunks_per_doc,omitempty"`
 }
 
 type RankResponseItem struct {
@@ -127,7 +127,13 @@ func (app *App) handleRerank(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rankedIDs, err := app.apeerRerank(req.Query, req.Documents)
+	// Convert string documents to Document structs
+	documents := make([]Document, len(req.Documents))
+	for i, text := range req.Documents {
+		documents[i] = Document{Text: text}
+	}
+
+	rankedIDs, err := app.apeerRerank(req.Query, documents)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Error during reranking: %v", err), http.StatusInternalServerError)
 		return
@@ -140,7 +146,7 @@ func (app *App) handleRerank(w http.ResponseWriter, r *http.Request) {
 			RelevanceScore: float64(len(rankedIDs)-i) / float64(len(rankedIDs)), // Simple score calculation
 		}
 		if req.ReturnDocuments == nil || *req.ReturnDocuments {
-			item.Document = &req.Documents[id]
+			item.Document = &Document{Text: req.Documents[id]}
 		}
 		results[i] = item
 	}
