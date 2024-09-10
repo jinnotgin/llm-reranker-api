@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -13,6 +15,68 @@ import (
 type App struct {
 	ProjectID string
 	Location  string
+}
+
+// LoggingMiddleware wraps an http.HandlerFunc and logs error requests with details
+func LoggingMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+
+		// Create a custom ResponseWriter to capture the status code
+		rw := &responseWriter{w, http.StatusOK}
+		next.ServeHTTP(rw, r)
+
+		// Only log if there's an error (status code >= 400)
+		if rw.status >= 400 {
+			duration := time.Since(start)
+
+			// Parse GET parameters
+			if err := r.ParseForm(); err != nil {
+				log.Printf("Error parsing form: %v", err)
+			}
+
+			// Create a map to store parameters
+			params := make(map[string]interface{})
+
+			// Add GET parameters
+			for k, v := range r.Form {
+				params[k] = v
+			}
+
+			// Add POST parameters for non-GET requests
+			if r.Method != http.MethodGet {
+				var postParams map[string]interface{}
+				if err := json.NewDecoder(r.Body).Decode(&postParams); err == nil {
+					for k, v := range postParams {
+						params[k] = v
+					}
+				}
+			}
+
+			// Convert params to JSON for logging
+			paramsJSON, _ := json.Marshal(params)
+
+			log.Printf(
+				"ERROR: method=%s path=%s status=%d duration=%s params=%s",
+				r.Method,
+				r.URL.Path,
+				rw.status,
+				duration,
+				string(paramsJSON),
+			)
+		}
+	}
+}
+
+// Custom ResponseWriter to capture status code
+type responseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+	rw.status = code
+	rw.ResponseWriter.WriteHeader(code)
 }
 
 func main() {
@@ -34,9 +98,9 @@ func main() {
 	}
 	fmt.Println("Gemini response:", response)
 
-	// Set up HTTP server for reranking
-	http.HandleFunc("/v1/rerank", app.handleRerank)
-	http.HandleFunc("/rerank", app.handleRerank)
+	// Set up HTTP server for reranking with logging middleware
+	http.HandleFunc("/v1/rerank", LoggingMiddleware(app.handleRerank))
+	http.HandleFunc("/rerank", LoggingMiddleware(app.handleRerank))
 
 	// Get port from environment variable or use default
 	port := os.Getenv("PORT")
