@@ -44,7 +44,7 @@ type GeminiResponse struct {
 	} `json:"candidates"`
 }
 
-func (app *App) callGeminiAPI(ctx context.Context, model, prompt string) (string, error) {
+func (app *App) callGeminiAPI(ctx context.Context, prompt string) (string, error) {
 	credentials, err := google.FindDefaultCredentials(ctx, "https://www.googleapis.com/auth/cloud-platform")
 	if err != nil {
 		return "", fmt.Errorf("failed to find default credentials: %v", err)
@@ -78,7 +78,7 @@ func (app *App) callGeminiAPI(ctx context.Context, model, prompt string) (string
 	}
 
 	url := fmt.Sprintf(geminiBaseURL+"%s:generateContent",
-		app.Location, app.ProjectID, app.Location, model)
+		app.Location, app.ProjectID, app.Location, app.Model)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(reqBody))
 	if err != nil {

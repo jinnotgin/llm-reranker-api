@@ -17,6 +17,7 @@ import (
 type App struct {
 	ProjectID string
 	Location  string
+	Model     string
 }
 
 // ErrorResponse represents the structure of our error response
@@ -106,11 +107,17 @@ func main() {
 	app := &App{
 		ProjectID: os.Getenv("PROJECT_ID"),
 		Location:  os.Getenv("LOCATION"),
+		Model:     os.Getenv("MODEL"),
+	}
+
+	// Validate that the required environment variables are set
+	if app.ProjectID == "" || app.Location == "" || app.Model == "" {
+		log.Fatal("Missing required environment variables: PROJECT_ID, LOCATION, or MODEL")
 	}
 
 	// Example of using the LLM
 	prompt := "Tell me a short joke"
-	response, err := app.callGeminiAPI(context.Background(), "gemini-1.5-flash", prompt)
+	response, err := app.callGeminiAPI(context.Background(), prompt)
 	if err != nil {
 		log.Fatalf("Error calling Gemini API: %v", err)
 	}

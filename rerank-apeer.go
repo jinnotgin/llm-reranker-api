@@ -58,7 +58,7 @@ func (app *App) apeerRerank(query string, documents []Document) ([]int, error) {
 
 	prompt := app.constructAPEERPrompt(query, passages)
 
-	response, err := app.callGeminiAPI(context.Background(), "gemini-1.5-flash", prompt)
+	response, err := app.callGeminiAPI(context.Background(), prompt)
 	if err != nil {
 		return nil, fmt.Errorf("error calling LLM: %v", err)
 	}
