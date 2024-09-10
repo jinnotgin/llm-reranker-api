@@ -62,6 +62,8 @@ func (app *App) apeerRerank(query string, documents []Document) ([]int, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error calling LLM: %v", err)
 	}
+	// Add this log
+	fmt.Printf("Raw LLM response: %s\n", response)
 
 	rankedIDs, err := app.parseAPEERResponse(response)
 	if err != nil {
@@ -91,7 +93,7 @@ func (app *App) parseAPEERResponse(response string) ([]int, error) {
 	start := strings.Index(response, "[rankstart]")
 	end := strings.Index(response, "[rankend]")
 	if start == -1 || end == -1 || start >= end {
-		return nil, fmt.Errorf("invalid response format")
+		return nil, fmt.Errorf("invalid response format: missing [rankstart] or [rankend] tags")
 	}
 
 	rankingStr := response[start+11 : end]
@@ -106,9 +108,15 @@ func (app *App) parseAPEERResponse(response string) ([]int, error) {
 		id := 0
 		_, err := fmt.Sscanf(idStr, "%d", &id)
 		if err != nil {
-			return nil, fmt.Errorf("error parsing ID: %v", err)
+			// Instead of returning an error, skip invalid IDs
+			fmt.Printf("Warning: invalid ID '%s' found in ranking\n", idStr)
+			continue
 		}
 		rankedIDs = append(rankedIDs, id)
+	}
+
+	if len(rankedIDs) == 0 {
+		return nil, fmt.Errorf("no valid IDs found in ranking")
 	}
 
 	return rankedIDs, nil
